@@ -13,8 +13,13 @@
     "windows": [
       {
         "title": "intrans",
-        "width": 800,
-        "height": 600
+        "width": 700,
+        "height": 160,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "center": true,
+        "shadow": true
       }
     ],
     "security": {
