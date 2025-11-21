@@ -2,7 +2,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
+    Emitter, Manager, WindowEvent,
 };
 
 #[tauri::command]
@@ -13,7 +13,6 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -22,7 +21,12 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 match window.label().as_ref() {
-                    "main" | "settings" => {
+                    "main" => {
+                        let _ = window.app_handle().emit("session-ended", ());
+                        let _ = window.hide();
+                        api.prevent_close();
+                    }
+                    "settings" => {
                         let _ = window.hide();
                         api.prevent_close();
                     }
@@ -31,6 +35,62 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::{
+                    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+                };
+                use tauri_plugin_positioner::{Position, WindowExt};
+
+                let toggle_main =
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space);
+                let open_settings =
+                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Comma);
+
+                app.handle().plugin(
+                    tauri_plugin_global_shortcut::Builder::new()
+                        .with_handler({
+                            let toggle_main = toggle_main.clone();
+                            let open_settings = open_settings.clone();
+                            move |app, shortcut, event| {
+                                use tauri::Manager;
+
+                                if !matches!(event.state(), ShortcutState::Released) {
+                                    return;
+                                }
+
+                                if shortcut == &toggle_main {
+                                    if let Some(window) = app.get_webview_window("main") {
+                                        if window.is_visible().unwrap_or(false) {
+                                            let _ = app.emit("session-ended", ());
+                                            let _ = window.hide();
+                                        } else {
+                                            let _ = window.unminimize();
+                                            let _ = window.show();
+                                            let _ = window.set_focus();
+                                            let _ = window
+                                                .as_ref()
+                                                .window()
+                                                .move_window(Position::TopCenter);
+                                        }
+                                    }
+                                } else if shortcut == &open_settings {
+                                    if let Some(window) = app.get_webview_window("settings") {
+                                        let _ = window.unminimize();
+                                        let _ = window.show();
+                                        let _ = window.set_focus();
+                                        let _ = window.center();
+                                    }
+                                }
+                            }
+                        })
+                        .build(),
+                )?;
+
+                app.global_shortcut().register(toggle_main)?;
+                app.global_shortcut().register(open_settings)?;
+            }
+
             let settings_item =
                 MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

@@ -16,6 +16,7 @@
         "title": "intrans",
         "width": 700,
         "height": 160,
+        "resizable": false,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
