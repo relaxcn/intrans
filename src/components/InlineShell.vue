@@ -81,13 +81,18 @@ async function resizeWindow(expanded: boolean) {
   const inputArea = document.getElementById("input-area");
 
   if (content && inputArea) {
-    // 计算所需高度：内容高度 + 输入框区域高度 + 边框/Padding修正
-    const contentHeight = content.scrollHeight + inputArea.offsetHeight; 
-    const newHeight = Math.min(Math.max(contentHeight, INITIAL_HEIGHT), MAX_HEIGHT);
+    // 计算所需高度：内容高度 + 输入框区域高度 + 容器Padding修正
+    // content.scrollHeight 包含了内部的所有高度
+    // inputArea.offsetHeight 是底部输入框的高度
+    const totalContentHeight = content.scrollHeight + inputArea.offsetHeight;
+    
+    // 限制在 INITIAL_HEIGHT 和 MAX_HEIGHT 之间
+    const newHeight = Math.min(Math.max(totalContentHeight, INITIAL_HEIGHT), MAX_HEIGHT);
+    
     await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, newHeight));
   } else {
     // Fallback if elements not found
-    await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, MAX_HEIGHT));
+    await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, INITIAL_HEIGHT));
   }
 }
 
@@ -308,7 +313,7 @@ async function handleSessionEnd() {
           <div v-for="(msg, idx) in messages" :key="msg.id" class="flex flex-col gap-2">
           <div v-if="msg.role === 'user'" class="flex justify-end">
             <div
-              class="bg-gray-100 text-gray-900 px-4 py-2.5 rounded-2xl rounded-tr-sm max-w-[80%] text-sm border border-gray-200"
+              class="bg-gray-100 text-gray-900 px-4 py-2.5 rounded-2xl rounded-tr-sm max-w-[80%] text-sm border border-gray-200 break-words whitespace-pre-wrap"
             >
               {{ msg.content }}
             </div>
