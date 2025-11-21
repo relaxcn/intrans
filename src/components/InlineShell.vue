@@ -81,12 +81,12 @@ async function resizeWindow(expanded: boolean) {
   }
 
   await nextTick();
-  const container = document.getElementById("chat-container");
+  const content = document.getElementById("chat-content");
   const inputArea = document.getElementById("input-area");
 
-  if (container && inputArea) {
+  if (content && inputArea) {
     // 计算所需高度：内容高度 + 输入框区域高度 + 边框/Padding修正
-    const contentHeight = container.scrollHeight + inputArea.offsetHeight + 4; // +4 for border/padding safety
+    const contentHeight = content.scrollHeight + inputArea.offsetHeight; 
     const newHeight = Math.min(Math.max(contentHeight, INITIAL_HEIGHT), MAX_HEIGHT);
     await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, newHeight));
   } else {
@@ -298,9 +298,10 @@ async function handleSessionEnd() {
       <div
         v-if="isExpanded"
         id="chat-container"
-        class="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50"
+        class="flex-1 overflow-y-auto bg-gray-50/50"
       >
-        <div v-for="(msg, idx) in messages" :key="msg.id" class="flex flex-col gap-2">
+        <div id="chat-content" class="p-4 space-y-4">
+          <div v-for="(msg, idx) in messages" :key="msg.id" class="flex flex-col gap-2">
           <div v-if="msg.role === 'user'" class="flex justify-end">
             <div
               class="bg-gray-100 text-gray-900 px-4 py-2.5 rounded-2xl rounded-tr-sm max-w-[80%] text-sm border border-gray-200"
@@ -338,8 +339,9 @@ async function handleSessionEnd() {
           </div>
         </div>
       </div>
+    </div>
 
-      <div class="bg-white z-10 border-t border-gray-100 mt-auto" id="input-area">
+    <div class="bg-white z-10 border-t border-gray-100 mt-auto" id="input-area">
         <div class="p-4 pb-2">
           <textarea
             v-model="input"
