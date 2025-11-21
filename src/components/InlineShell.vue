@@ -29,6 +29,7 @@ const messages = computed(() => {
   return session ? session.messages : [];
 });
 const isExpanded = ref(false);
+const isThinking = ref(false);
 const provider = ref("openai");
 const modelInput = ref("gpt-4.1");
 
@@ -145,7 +146,7 @@ onBeforeUnmount(() => {
 });
 
 function handleSend() {
-  if (!input.value.trim()) return;
+  if (!input.value.trim() || isThinking.value) return;
 
   // 将当前会话移动到末尾
   const currentIndex = activeSessionIndex.value;
@@ -167,6 +168,7 @@ function handleSend() {
 
   session.messages.push(userMsg);
   input.value = "";
+  isThinking.value = true;
 
   if (!isExpanded.value) {
     resizeWindow(true);
@@ -185,6 +187,7 @@ function handleSend() {
       timestamp: Date.now(),
     };
     session.messages.push(aiMsg);
+    isThinking.value = false;
     scrollToBottom();
   }, 600);
 
@@ -380,11 +383,11 @@ async function handleSessionEnd() {
           <button
             class="p-2 rounded-full transition-colors flex items-center justify-center"
             :class="
-              input
+              input && !isThinking
                 ? 'bg-gray-800 text-white hover:bg-gray-700'
                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
             "
-            :disabled="!input"
+            :disabled="!input || isThinking"
             @click="handleSend"
           >
             <ArrowUp class="w-4 h-4" />
