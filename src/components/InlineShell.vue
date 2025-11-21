@@ -353,7 +353,11 @@ async function handleSessionEnd() {
       </div>
     </div>
 
-    <div class="bg-white z-10 border-t border-gray-100 mt-auto" id="input-area">
+    <div
+      class="bg-white z-10 mt-auto"
+      :class="{ 'border-t border-gray-100 rounded-t-xl': isExpanded }"
+      id="input-area"
+    >
         <div class="p-4 pb-2">
           <textarea
             v-model="input"
