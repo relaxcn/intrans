@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
 import { Image, Mic, ArrowUp } from "lucide-vue-next";
-import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalPosition, LogicalSize } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { Store } from "@tauri-apps/plugin-store";
 
@@ -36,6 +36,7 @@ const modelInput = ref("gpt-4.1");
 const INITIAL_WIDTH = 700;
 const INITIAL_HEIGHT = 120;
 const MAX_HEIGHT = 600;
+const WINDOW_MOVE_STEP = 40;
 
 let settingsStore: Store | null = null;
 
@@ -46,6 +47,22 @@ async function ensureStore(): Promise<Store> {
   return settingsStore;
 }
 
+async function moveWindowBy(deltaX: number, deltaY: number) {
+  const appWindow = getCurrentWindow();
+
+  try {
+    const factor = await appWindow.scaleFactor();
+    const currentPosition = await appWindow.outerPosition();
+    const logicalPos = currentPosition.toLogical(factor);
+    
+    const newX = Math.max(0, logicalPos.x + deltaX);
+    const newY = Math.max(0, logicalPos.y + deltaY);
+
+    await appWindow.setPosition(new LogicalPosition(newX, newY));
+  } catch (error) {
+    console.error("Failed to move window", error);
+  }
+}
 
 function getLiveSession(): Session {
   const lastIndex = sessions.value.length - 1;
@@ -255,6 +272,26 @@ async function handleKeydown(event: KeyboardEvent) {
   if (event.key === "Enter") {
     event.preventDefault();
     handleSend();
+    return;
+  }
+
+  if (
+    event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)
+  ) {
+    event.preventDefault();
+    if (event.key === "ArrowUp") {
+      await moveWindowBy(0, -WINDOW_MOVE_STEP);
+    } else if (event.key === "ArrowDown") {
+      await moveWindowBy(0, WINDOW_MOVE_STEP);
+    } else if (event.key === "ArrowLeft") {
+      await moveWindowBy(-WINDOW_MOVE_STEP, 0);
+    } else {
+      await moveWindowBy(WINDOW_MOVE_STEP, 0);
+    }
     return;
   }
 
