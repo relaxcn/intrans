@@ -99,10 +99,14 @@ async function resizeWindow(expanded: boolean) {
 
 watch(
   messages,
-  async () => {
-    if (isExpanded.value) {
+  async (newMessages) => {
+    if (newMessages && newMessages.length > 0) {
       await resizeWindow(true);
       scrollToBottom();
+    } else {
+      if (isExpanded.value) {
+        await resizeWindow(false);
+      }
     }
   },
   { deep: true }
@@ -229,11 +233,8 @@ function navigateHistory(direction: -1 | 1) {
   }
 
   // 如果切换到的会话有内容，自动展开窗口
-  const currentSession = sessions.value[activeSessionIndex.value];
-  if (currentSession && currentSession.messages.length > 0 && !isExpanded.value) {
-    resizeWindow(true);
-  }
-
+  // 这一步交给 watch(messages) 来处理，确保逻辑统一
+  // 仅仅处理滚动
   nextTick(() => {
     const container = document.getElementById("chat-container");
     if (container) {
