@@ -291,9 +291,9 @@ async function handleSessionEnd() {
 </script>
 
 <template>
-  <div class="h-screen w-screen flex flex-col bg-transparent p-px" data-tauri-drag-region>
+  <div class="h-screen w-screen flex flex-col bg-transparent" data-tauri-drag-region>
     <div
-      class="w-full h-full bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col transition-all duration-200 ease-in-out relative overflow-hidden"
+      class="w-full h-full bg-white rounded-xl shadow-sm flex flex-col transition-all duration-200 ease-in-out relative overflow-hidden"
     >
       <div
         v-if="isExpanded"
