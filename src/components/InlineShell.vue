@@ -51,10 +51,6 @@ function getLiveSession(): Session {
   return sessions.value[lastIndex];
 }
 
-function ensureViewingLiveSession() {
-  activeSessionIndex.value = sessions.value.length - 1;
-}
-
 async function loadSettings() {
   try {
     const store = await ensureStore();
@@ -146,8 +142,16 @@ onBeforeUnmount(() => {
 function handleSend() {
   if (!input.value.trim()) return;
 
-  ensureViewingLiveSession();
-  const session = getLiveSession();
+  // 将当前会话移动到末尾
+  const currentIndex = activeSessionIndex.value;
+  if (currentIndex < sessions.value.length - 1) {
+    const currentSession = sessions.value[currentIndex];
+    sessions.value.splice(currentIndex, 1);
+    sessions.value.push(currentSession);
+    activeSessionIndex.value = sessions.value.length - 1;
+  }
+
+  const session = sessions.value[activeSessionIndex.value];
 
   const userMsg: Message = {
     id: Date.now().toString(),
