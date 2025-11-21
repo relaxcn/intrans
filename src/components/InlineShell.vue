@@ -304,7 +304,11 @@ async function handleSessionEnd() {
 </script>
 
 <template>
-  <div class="h-screen w-screen flex flex-col bg-transparent" data-tauri-drag-region>
+  <div
+    class="h-screen w-screen flex flex-col bg-transparent"
+    data-tauri-drag-region
+    @keydown="handleKeydown"
+  >
     <div
       class="w-full h-full bg-white rounded-xl shadow-sm flex flex-col transition-all duration-200 ease-in-out relative overflow-hidden"
     >
@@ -365,7 +369,6 @@ async function handleSessionEnd() {
             placeholder="What would you like to translate?"
             class="w-full resize-none outline-none text-gray-700 placeholder-gray-400 text-base bg-transparent max-h-32 overflow-y-auto"
             rows="1"
-            @keydown="handleKeydown"
           ></textarea>
         </div>
 
