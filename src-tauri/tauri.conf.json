@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "intrans",
         "width": 700,
         "height": 160,
@@ -19,7 +20,19 @@
         "transparent": true,
         "alwaysOnTop": true,
         "center": true,
-        "shadow": true
+        "shadow": true,
+        "visible": false
+      },
+      {
+        "label": "settings",
+        "title": "Intrans Settings",
+        "width": 800,
+        "height": 520,
+        "decorations": true,
+        "transparent": false,
+        "resizable": true,
+        "center": true,
+        "visible": false
       }
     ],
     "security": {

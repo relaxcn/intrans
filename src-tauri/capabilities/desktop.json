@@ -6,10 +6,16 @@
     "linux"
   ],
   "windows": [
-    "main"
+    "main",
+    "settings"
   ],
   "permissions": [
     "positioner:default",
-    "global-shortcut:default"
+    "store:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "global-shortcut:allow-is-registered",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister"
   ]
 }
