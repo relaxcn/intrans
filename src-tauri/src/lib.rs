@@ -68,20 +68,9 @@ pub fn run() {
                                             let _ = window.unminimize();
                                             let _ = window.show();
                                             let _ = window.set_focus();
-
-                                            #[cfg(target_os = "windows")]
-                                            {
-                                                if let Some(pos) = get_caret_position() {
-                                                    let _ = window.set_position(tauri::Position::Physical(pos));
-                                                } else {
-                                                    let _ = window
-                                                        .as_ref()
-                                                        .window()
-                                                        .move_window(Position::Center);
-                                                }
-                                            }
-                                            #[cfg(not(target_os = "windows"))]
-                                            {
+                                            if let Some(pos) = get_caret_position() {
+                                                let _ = window.set_position(tauri::Position::Physical(pos));
+                                            } else {
                                                 let _ = window
                                                     .as_ref()
                                                     .window()
@@ -193,5 +182,11 @@ fn get_caret_position() -> Option<tauri::PhysicalPosition<i32>> {
             }
         }
     }
+    None
+}
+
+// TODO: implement for macos
+#[cfg(target_os = "macos")]
+fn get_caret_position() -> Option<tauri::PhysicalPosition<i32>> {
     None
 }
