@@ -68,10 +68,25 @@ pub fn run() {
                                             let _ = window.unminimize();
                                             let _ = window.show();
                                             let _ = window.set_focus();
-                                            let _ = window
-                                                .as_ref()
-                                                .window()
-                                                .move_window(Position::TopCenter);
+
+                                            #[cfg(target_os = "windows")]
+                                            {
+                                                if let Some(pos) = get_caret_position() {
+                                                    let _ = window.set_position(tauri::Position::Physical(pos));
+                                                } else {
+                                                    let _ = window
+                                                        .as_ref()
+                                                        .window()
+                                                        .move_window(Position::Center);
+                                                }
+                                            }
+                                            #[cfg(not(target_os = "windows"))]
+                                            {
+                                                let _ = window
+                                                    .as_ref()
+                                                    .window()
+                                                    .move_window(Position::Center);
+                                            }
                                         }
                                     }
                                 } else if shortcut == &open_settings {
@@ -134,4 +149,49 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(target_os = "windows")]
+fn get_caret_position() -> Option<tauri::PhysicalPosition<i32>> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::ClientToScreen;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, GUITHREADINFO,
+    };
+
+    unsafe {
+        let foreground_window = GetForegroundWindow();
+        if foreground_window.0.is_null() {
+            return None;
+        }
+
+        let mut process_id = 0;
+        let thread_id = GetWindowThreadProcessId(foreground_window, Some(&mut process_id));
+
+        let mut gui_info = GUITHREADINFO::default();
+        gui_info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
+
+        if GetGUIThreadInfo(thread_id, &mut gui_info).is_ok() {
+            let caret_rect = gui_info.rcCaret;
+
+            if caret_rect.right == 0 && caret_rect.bottom == 0 {
+                return None;
+            }
+
+            let mut point = POINT {
+                x: caret_rect.left,
+                y: caret_rect.bottom,
+            };
+
+            if !gui_info.hwndCaret.0.is_null() {
+                if ClientToScreen(gui_info.hwndCaret, &mut point).as_bool() {
+                    return Some(tauri::PhysicalPosition {
+                        x: point.x,
+                        y: point.y,
+                    });
+                }
+            }
+        }
+    }
+    None
 }
