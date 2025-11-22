@@ -9,6 +9,8 @@ const props = defineProps<{
   validate?: (shortcut: string) => Promise<boolean>;
 }>();
 
+const ERROR_DISPLAY_DURATION = 3000;
+
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void;
 }>();
@@ -17,6 +19,8 @@ const isRecording = ref(false);
 const elementRef = ref<HTMLElement | null>(null);
 const isMac = ref(false);
 const pendingShortcut = ref('');
+const conflictShortcut = ref('');
+let conflictTimeout: number | null = null;
 const errorMessage = ref('');
 let errorTimeout: number | null = null;
 
@@ -25,9 +29,9 @@ onMounted(() => {
 });
 
 const displayKeys = computed(() => {
-  const rawValue = isRecording.value && pendingShortcut.value 
+  const rawValue = conflictShortcut.value || (isRecording.value && pendingShortcut.value 
     ? pendingShortcut.value 
-    : props.modelValue;
+    : props.modelValue);
 
   if (!rawValue) return [];
   
@@ -51,12 +55,19 @@ function showError(msg: string) {
   if (errorTimeout) clearTimeout(errorTimeout);
   errorTimeout = window.setTimeout(() => {
     errorMessage.value = '';
-  }, 3000);
+  }, ERROR_DISPLAY_DURATION);
 }
 
 async function startRecording() {
   isRecording.value = true;
   pendingShortcut.value = '';
+
+  if (conflictTimeout) {
+    clearTimeout(conflictTimeout);
+    conflictTimeout = null;
+  }
+  conflictShortcut.value = '';
+
   errorMessage.value = '';
   elementRef.value?.focus();
   await tauriEmit('pause-global-shortcuts');
@@ -128,10 +139,16 @@ async function handleKeyDown(e: KeyboardEvent) {
         const isValid = await props.validate(shortcut);
         if (!isValid) {
             showError('System shortcut conflict');
-            // Keep recording or stop? 
-            // User requirement: "提示用户，并且不修改快捷键"
-            // Let's stop recording but revert to old value (which is auto since we didn't emit)
+            // Show the conflicting shortcut temporarily
+            conflictShortcut.value = shortcut;
             await stopRecording();
+            
+            // Reset after delay
+            if (conflictTimeout) clearTimeout(conflictTimeout);
+            conflictTimeout = window.setTimeout(() => {
+                conflictShortcut.value = '';
+                conflictTimeout = null;
+            }, ERROR_DISPLAY_DURATION);
             return;
         }
     }
