@@ -10,6 +10,30 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[tauri::command]
+fn toggle_main_window(app: tauri::AppHandle) {
+    use tauri_plugin_positioner::{Position, WindowExt};
+
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_visible().unwrap_or(false) {
+            let _ = app.emit("session-ended", ());
+            let _ = window.hide();
+        } else {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+            if let Some(pos) = get_caret_position() {
+                let _ = window.set_position(tauri::Position::Physical(pos));
+            } else {
+                let _ = window
+                    .as_ref()
+                    .window()
+                    .move_window(Position::Center);
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -17,7 +41,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![greet, toggle_main_window])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 match window.label().as_ref() {
@@ -37,62 +61,7 @@ pub fn run() {
         .setup(|app| {
             #[cfg(desktop)]
             {
-                use tauri_plugin_global_shortcut::{
-                    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
-                };
-                use tauri_plugin_positioner::{Position, WindowExt};
-
-                let toggle_main =
-                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space);
-                let open_settings =
-                    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Comma);
-
-                app.handle().plugin(
-                    tauri_plugin_global_shortcut::Builder::new()
-                        .with_handler({
-                            let toggle_main = toggle_main.clone();
-                            let open_settings = open_settings.clone();
-                            move |app, shortcut, event| {
-                                use tauri::Manager;
-
-                                if !matches!(event.state(), ShortcutState::Released) {
-                                    return;
-                                }
-
-                                if shortcut == &toggle_main {
-                                    if let Some(window) = app.get_webview_window("main") {
-                                        if window.is_visible().unwrap_or(false) {
-                                            let _ = app.emit("session-ended", ());
-                                            let _ = window.hide();
-                                        } else {
-                                            let _ = window.unminimize();
-                                            let _ = window.show();
-                                            let _ = window.set_focus();
-                                            if let Some(pos) = get_caret_position() {
-                                                let _ = window.set_position(tauri::Position::Physical(pos));
-                                            } else {
-                                                let _ = window
-                                                    .as_ref()
-                                                    .window()
-                                                    .move_window(Position::Center);
-                                            }
-                                        }
-                                    }
-                                } else if shortcut == &open_settings {
-                                    if let Some(window) = app.get_webview_window("settings") {
-                                        let _ = window.unminimize();
-                                        let _ = window.show();
-                                        let _ = window.set_focus();
-                                        let _ = window.center();
-                                    }
-                                }
-                            }
-                        })
-                        .build(),
-                )?;
-
-                app.global_shortcut().register(toggle_main)?;
-                app.global_shortcut().register(open_settings)?;
+                app.handle().plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
             }
 
             let settings_item =

@@ -1,14 +1,42 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import InlineShell from "./components/InlineShell.vue";
 import SettingsView from "./components/SettingsView.vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
+import { setupGlobalShortcuts, unregisterAllShortcuts } from "./services/shortcutService";
 
 const currentLabel = ref("main");
+const unlisteners: (() => void)[] = [];
 
-onMounted(() => {
+onMounted(async () => {
   const win = getCurrentWindow();
   currentLabel.value = win.label;
+
+  if (currentLabel.value === "main") {
+    await setupGlobalShortcuts();
+    
+    // Listen for settings changes to reload shortcuts
+    unlisteners.push(await listen("settings-changed", async () => {
+      console.log("Settings changed, reloading shortcuts...");
+      await setupGlobalShortcuts();
+    }));
+
+    // Handle pause/resume from settings window
+    unlisteners.push(await listen("pause-global-shortcuts", async () => {
+        console.log("Pausing global shortcuts for recording...");
+        await unregisterAllShortcuts();
+    }));
+
+    unlisteners.push(await listen("resume-global-shortcuts", async () => {
+        console.log("Resuming global shortcuts...");
+        await setupGlobalShortcuts();
+    }));
+  }
+});
+
+onUnmounted(() => {
+  unlisteners.forEach(unlisten => unlisten());
 });
 </script>
 

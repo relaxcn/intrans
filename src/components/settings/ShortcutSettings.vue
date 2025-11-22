@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ShortcutRecorder from './ShortcutRecorder.vue';
+import { validateShortcut } from '../../services/shortcutService';
 
 interface Props {
   toggleMainShortcut: string;
@@ -21,6 +22,7 @@ const emit = defineEmits<{
       <ShortcutRecorder
         :model-value="toggleMainShortcut"
         @update:model-value="emit('update:toggleMainShortcut', $event)"
+        :validate="validateShortcut"
         placeholder="Click to record shortcut"
       />
       <p class="text-xs text-gray-500 mt-1">Global shortcut to show/hide the translation window.</p>
@@ -31,6 +33,7 @@ const emit = defineEmits<{
       <ShortcutRecorder
         :model-value="openSettingsShortcut"
         @update:model-value="emit('update:openSettingsShortcut', $event)"
+        :validate="validateShortcut"
         placeholder="Click to record shortcut"
       />
       <p class="text-xs text-gray-500 mt-1">Global shortcut to open this settings panel.</p>

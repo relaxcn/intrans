@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { X, Command } from 'lucide-vue-next';
+import { X, Command, AlertCircle } from 'lucide-vue-next';
+import { emit as tauriEmit } from '@tauri-apps/api/event';
 
 const props = defineProps<{
   modelValue: string;
   placeholder?: string;
+  validate?: (shortcut: string) => Promise<boolean>;
 }>();
 
 const emit = defineEmits<{
@@ -15,6 +17,8 @@ const isRecording = ref(false);
 const elementRef = ref<HTMLElement | null>(null);
 const isMac = ref(false);
 const pendingShortcut = ref('');
+const errorMessage = ref('');
+let errorTimeout: number | null = null;
 
 onMounted(() => {
   isMac.value = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -42,22 +46,37 @@ const displayKeys = computed(() => {
   return keys;
 });
 
-function startRecording() {
-  isRecording.value = true;
-  pendingShortcut.value = '';
-  elementRef.value?.focus();
+function showError(msg: string) {
+  errorMessage.value = msg;
+  if (errorTimeout) clearTimeout(errorTimeout);
+  errorTimeout = window.setTimeout(() => {
+    errorMessage.value = '';
+  }, 3000);
 }
 
-function stopRecording() {
+async function startRecording() {
+  isRecording.value = true;
+  pendingShortcut.value = '';
+  errorMessage.value = '';
+  elementRef.value?.focus();
+  await tauriEmit('pause-global-shortcuts');
+}
+
+async function stopRecording() {
   isRecording.value = false;
   pendingShortcut.value = '';
   elementRef.value?.blur();
+  await tauriEmit('resume-global-shortcuts');
 }
 
-function clearShortcut(e: Event) {
+async function clearShortcut(e: Event) {
   e.stopPropagation();
   emit('update:modelValue', '');
-  stopRecording();
+  // If we were recording, stop it (which handles resume)
+  // If we weren't, we don't need to resume.
+  if (isRecording.value) {
+      await stopRecording();
+  }
 }
 
 function getCurrentModifiers(e: KeyboardEvent): string[] {
@@ -69,13 +88,13 @@ function getCurrentModifiers(e: KeyboardEvent): string[] {
   return keys;
 }
 
-function handleKeyDown(e: KeyboardEvent) {
+async function handleKeyDown(e: KeyboardEvent) {
   if (!isRecording.value) return;
 
   e.preventDefault();
   
   if (e.key === 'Escape') {
-    stopRecording();
+    await stopRecording();
     return;
   }
 
@@ -100,8 +119,25 @@ function handleKeyDown(e: KeyboardEvent) {
   
   if (!isModifier && keys.length > 0) {
     // Finalize shortcut
+    if (shortcut === props.modelValue) {
+        await stopRecording();
+        return;
+    }
+
+    if (props.validate) {
+        const isValid = await props.validate(shortcut);
+        if (!isValid) {
+            showError('System shortcut conflict');
+            // Keep recording or stop? 
+            // User requirement: "提示用户，并且不修改快捷键"
+            // Let's stop recording but revert to old value (which is auto since we didn't emit)
+            await stopRecording();
+            return;
+        }
+    }
+
     emit('update:modelValue', shortcut);
-    stopRecording();
+    await stopRecording();
   } else {
     // Update pending display for modifiers
     pendingShortcut.value = shortcut;
@@ -116,59 +152,74 @@ function handleKeyUp(e: KeyboardEvent) {
   pendingShortcut.value = keys.join('+');
 }
 
-function handleBlur() {
+async function handleBlur() {
   if (isRecording.value) {
     isRecording.value = false;
     pendingShortcut.value = '';
+    await tauriEmit('resume-global-shortcuts');
   }
 }
 </script>
 
 <template>
-  <div
-    ref="elementRef"
-    class="relative w-full min-h-[42px] rounded-lg border transition-all duration-200 flex items-center px-3 py-2 cursor-pointer outline-none group select-none bg-white"
-    :class="[
-      isRecording 
-        ? 'border-black ring-2 ring-black/5' 
-        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-    ]"
-    tabindex="0"
-    @click="startRecording"
-    @keydown="handleKeyDown"
-    @keyup="handleKeyUp"
-    @blur="handleBlur"
-  >
-    <!-- Placeholder -->
-    <div v-if="displayKeys.length === 0" class="text-sm text-gray-400 flex items-center gap-2">
-      <Command class="w-4 h-4 opacity-50" />
-      <span v-if="isRecording" class="text-indigo-600 font-medium animate-pulse">Press keys...</span>
-      <span v-else>{{ placeholder || 'Click to record' }}</span>
-    </div>
-
-    <!-- Keys Display -->
-    <div v-else class="flex flex-wrap gap-1.5 items-center">
-      <template v-if="isRecording">
-         <span class="text-xs font-medium text-indigo-600 uppercase tracking-wider mr-2">Recording</span>
-      </template>
-      <kbd
-        v-for="(key, index) in displayKeys"
-        :key="index"
-        class="hidden sm:inline-flex items-center justify-center min-w-6 px-2 py-1 rounded-md border border-b-2 border-gray-200 bg-gray-50 text-gray-600 text-xs font-bold font-mono shadow-sm"
-      >
-        {{ key }}
-      </kbd>
-    </div>
-
-    <!-- Clear Button -->
-    <button
-      v-if="modelValue && !isRecording"
-      type="button"
-      class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all opacity-0 group-hover:opacity-100"
-      @click="clearShortcut"
-      title="Clear shortcut"
+  <div class="relative">
+    <!-- Error Bubble -->
+    <div 
+        v-if="errorMessage"
+        class="absolute bottom-full left-0 mb-2 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 text-xs font-medium rounded-md border border-red-100 shadow-sm animate-in fade-in slide-in-from-bottom-1"
     >
-      <X class="w-4 h-4" />
-    </button>
+        <AlertCircle class="w-3.5 h-3.5" />
+        {{ errorMessage }}
+        <!-- Arrow -->
+        <div class="absolute -bottom-1 left-4 w-2 h-2 bg-red-50 border-b border-r border-red-100 rotate-45"></div>
+    </div>
+
+    <div
+        ref="elementRef"
+        class="relative w-full min-h-[42px] rounded-lg border transition-all duration-200 flex items-center px-3 py-2 cursor-pointer outline-none group select-none bg-white"
+        :class="[
+        isRecording 
+            ? 'border-black ring-2 ring-black/5' 
+            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50',
+        errorMessage ? 'border-red-200 bg-red-50/30' : ''
+        ]"
+        tabindex="0"
+        @click="startRecording"
+        @keydown="handleKeyDown"
+        @keyup="handleKeyUp"
+        @blur="handleBlur"
+    >
+        <!-- Placeholder -->
+        <div v-if="displayKeys.length === 0" class="text-sm text-gray-400 flex items-center gap-2">
+        <Command class="w-4 h-4 opacity-50" />
+        <span v-if="isRecording" class="text-indigo-600 font-medium animate-pulse">Press keys...</span>
+        <span v-else>{{ placeholder || 'Click to record' }}</span>
+        </div>
+
+        <!-- Keys Display -->
+        <div v-else class="flex flex-wrap gap-1.5 items-center">
+        <template v-if="isRecording">
+            <span class="text-xs font-medium text-indigo-600 uppercase tracking-wider mr-2">Recording</span>
+        </template>
+        <kbd
+            v-for="(key, index) in displayKeys"
+            :key="index"
+            class="hidden sm:inline-flex items-center justify-center min-w-6 px-2 py-1 rounded-md border border-b-2 border-gray-200 bg-gray-50 text-gray-600 text-xs font-bold font-mono shadow-sm"
+        >
+            {{ key }}
+        </kbd>
+        </div>
+
+        <!-- Clear Button -->
+        <button
+        v-if="modelValue && !isRecording"
+        type="button"
+        class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all opacity-0 group-hover:opacity-100"
+        @click="clearShortcut"
+        title="Clear shortcut"
+        >
+        <X class="w-4 h-4" />
+        </button>
+    </div>
   </div>
 </template>
