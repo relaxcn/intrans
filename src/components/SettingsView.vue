@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { Store } from "@tauri-apps/plugin-store";
@@ -11,15 +11,30 @@ import ShortcutSettings from "./settings/ShortcutSettings.vue";
 type Tab = "ai" | "shortcuts";
 const currentTab = ref<Tab>("ai");
 
-// AI Settings
-const provider = ref("openai");
-const model = ref("gpt-4.1");
-const apiKey = ref("");
-const baseUrl = ref("");
+interface SettingsState {
+  provider: string;
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+  toggleMainShortcut: string;
+  openSettingsShortcut: string;
+}
 
-// Shortcut Settings
-const toggleMainShortcut = ref("Ctrl+Alt+Space");
-const openSettingsShortcut = ref("Ctrl+Shift+,");
+const defaultState: SettingsState = {
+  provider: "openai",
+  model: "gpt-4.1",
+  apiKey: "",
+  baseUrl: "",
+  toggleMainShortcut: "Ctrl+Alt+Space",
+  openSettingsShortcut: "Ctrl+Shift+,",
+};
+
+const formData = ref<SettingsState>({ ...defaultState });
+const savedState = ref<SettingsState>({ ...defaultState });
+
+const hasChanges = computed(() => {
+  return JSON.stringify(formData.value) !== JSON.stringify(savedState.value);
+});
 
 let settingsStore: Store | null = null;
 
@@ -30,28 +45,36 @@ async function ensureStore(): Promise<Store> {
   return settingsStore;
 }
 
-onMounted(async () => {
+async function loadSettings() {
   try {
     const store = await ensureStore();
+
+    const loaded: SettingsState = { ...defaultState };
 
     const savedProvider = await store.get<string>("provider");
     const savedModel = await store.get<string>("model");
     const savedApiKey = await store.get<string>("apiKey");
     const savedBaseUrl = await store.get<string>("baseUrl");
-    
     const savedToggleMain = await store.get<string>("toggleMainShortcut");
     const savedOpenSettings = await store.get<string>("openSettingsShortcut");
 
-    if (savedProvider) provider.value = savedProvider;
-    if (savedModel) model.value = savedModel;
-    if (savedApiKey) apiKey.value = savedApiKey;
-    if (savedBaseUrl) baseUrl.value = savedBaseUrl;
-    
-    if (savedToggleMain) toggleMainShortcut.value = savedToggleMain;
-    if (savedOpenSettings) openSettingsShortcut.value = savedOpenSettings;
+    if (savedProvider) loaded.provider = savedProvider;
+    if (savedModel) loaded.model = savedModel;
+    if (savedApiKey) loaded.apiKey = savedApiKey;
+    if (savedBaseUrl) loaded.baseUrl = savedBaseUrl;
+    if (savedToggleMain) loaded.toggleMainShortcut = savedToggleMain;
+    if (savedOpenSettings) loaded.openSettingsShortcut = savedOpenSettings;
+
+    // Update both current form and saved state
+    formData.value = { ...loaded };
+    savedState.value = { ...loaded };
   } catch (error) {
     console.error("Failed to load settings", error);
   }
+}
+
+onMounted(() => {
+  loadSettings();
 });
 
 function closeWindow() {
@@ -62,20 +85,35 @@ function closeWindow() {
 async function saveSettings() {
   try {
     const store = await ensureStore();
-    await store.set("provider", provider.value);
-    await store.set("model", model.value);
-    await store.set("apiKey", apiKey.value);
-    await store.set("baseUrl", baseUrl.value);
+    await store.set("provider", formData.value.provider);
+    await store.set("model", formData.value.model);
+    await store.set("apiKey", formData.value.apiKey);
+    await store.set("baseUrl", formData.value.baseUrl);
     
-    await store.set("toggleMainShortcut", toggleMainShortcut.value);
-    await store.set("openSettingsShortcut", openSettingsShortcut.value);
+    await store.set("toggleMainShortcut", formData.value.toggleMainShortcut);
+    await store.set("openSettingsShortcut", formData.value.openSettingsShortcut);
 
     await store.save();
     await emit("settings-changed");
+    
+    // Update saved state to match current form
+    savedState.value = { ...formData.value };
   } catch (error) {
     console.error("Failed to save settings", error);
   }
+}
 
+async function handleApply() {
+  await saveSettings();
+}
+
+async function handleOK() {
+  await saveSettings();
+  closeWindow();
+}
+
+async function handleCancel() {
+  await loadSettings(); // Revert changes
   closeWindow();
 }
 </script>
@@ -123,16 +161,16 @@ async function saveSettings() {
             
             <AIProviderSettings
               v-if="currentTab === 'ai'"
-              v-model:provider="provider"
-              v-model:model="model"
-              v-model:apiKey="apiKey"
-              v-model:baseUrl="baseUrl"
+              v-model:provider="formData.provider"
+              v-model:model="formData.model"
+              v-model:apiKey="formData.apiKey"
+              v-model:baseUrl="formData.baseUrl"
             />
 
             <ShortcutSettings
               v-if="currentTab === 'shortcuts'"
-              v-model:toggleMainShortcut="toggleMainShortcut"
-              v-model:openSettingsShortcut="openSettingsShortcut"
+              v-model:toggleMainShortcut="formData.toggleMainShortcut"
+              v-model:openSettingsShortcut="formData.openSettingsShortcut"
             />
         </div>
       </div>
@@ -142,17 +180,30 @@ async function saveSettings() {
         <div class="max-w-2xl mx-auto flex justify-end gap-3">
           <button
             type="button"
-            class="px-4 py-2 rounded-md text-sm text-gray-600 hover:bg-gray-100 border border-transparent"
-            @click="closeWindow"
+            class="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 shadow-sm transition-colors"
+            @click="handleCancel"
           >
             Cancel
           </button>
           <button
             type="button"
-            class="px-4 py-2 rounded-md text-sm font-medium text-white bg-black hover:bg-gray-800 border border-transparent"
-            @click="saveSettings"
+            class="px-4 py-2 rounded-md text-sm font-medium transition-colors border shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            :class="[
+              hasChanges 
+                ? 'text-gray-700 bg-white hover:bg-gray-50 border-gray-300' 
+                : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed'
+            ]"
+            :disabled="!hasChanges"
+            @click="handleApply"
           >
-            Save
+            Apply
+          </button>
+          <button
+            type="button"
+            class="px-4 py-2 rounded-md text-sm font-medium text-white bg-black hover:bg-gray-800 border border-transparent shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-colors"
+            @click="handleOK"
+          >
+            OK
           </button>
         </div>
       </div>

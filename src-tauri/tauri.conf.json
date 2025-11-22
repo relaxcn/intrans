@@ -27,8 +27,10 @@
       {
         "label": "settings",
         "title": "Intrans Settings",
-        "width": 800,
-        "height": 520,
+        "width": 1000,
+        "height": 720,
+        "minWidth": 800,
+        "minHeight": 600,
         "decorations": true,
         "transparent": false,
         "resizable": true,
