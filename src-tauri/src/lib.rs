@@ -19,10 +19,14 @@ fn toggle_main_window(app: tauri::AppHandle) {
             let _ = app.emit("session-ended", ());
             let _ = window.hide();
         } else {
+            // 先获取光标位置（在窗口成为前台之前）
+            let caret_pos = get_caret_position();
+            
             let _ = window.unminimize();
             let _ = window.show();
             let _ = window.set_focus();
-            if let Some(pos) = get_caret_position() {
+            
+            if let Some(pos) = caret_pos {
                 let _ = window.set_position(tauri::Position::Physical(pos));
             } else {
                 let _ = window
@@ -125,6 +129,7 @@ fn get_caret_position() -> Option<tauri::PhysicalPosition<i32>> {
 
         let mut process_id = 0;
         let thread_id = GetWindowThreadProcessId(foreground_window, Some(&mut process_id));
+        println!("thread_id: {thread_id}");
 
         let mut gui_info = GUITHREADINFO::default();
         gui_info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
@@ -132,7 +137,9 @@ fn get_caret_position() -> Option<tauri::PhysicalPosition<i32>> {
         if GetGUIThreadInfo(thread_id, &mut gui_info).is_ok() {
             let caret_rect = gui_info.rcCaret;
 
-            if caret_rect.right == 0 && caret_rect.bottom == 0 {
+            // 检查光标矩形是否完全为空（所有字段都为 0）
+            if caret_rect.left == 0 && caret_rect.top == 0 
+                && caret_rect.right == 0 && caret_rect.bottom == 0 {
                 return None;
             }
 
