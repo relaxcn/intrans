@@ -8,9 +8,11 @@ use super::Position;
 use windows::{
     core::*,
     Win32::{
-        Foundation::POINT,
+        Foundation::{POINT, S_OK, S_FALSE},
         Graphics::Gdi::ClientToScreen,
         System::Com::*,
+        System::Ole::SafeArrayAccessData,
+        System::Ole::SafeArrayUnaccessData,
         UI::{
             Accessibility::*,
             WindowsAndMessaging::{
@@ -95,42 +97,86 @@ fn try_get_from_gui_thread_info() -> Option<Position> {
 /// 适用于使用自定义渲染的现代应用（如 Chrome、VS Code 等）
 fn try_get_from_ui_automation() -> Option<Position> {
     unsafe {
-        // 初始化 COM
-        if CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_err() {
+        // 初始化 COM（S_OK 和 S_FALSE 都表示成功）
+        let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        if hr != S_OK && hr != S_FALSE {
+            println!("✗ UI Automation: COM 初始化失败");
             return None;
         }
 
         let result = (|| -> windows::core::Result<Position> {
             // 创建 UI Automation 实例
             let automation: IUIAutomation =
-                CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)?;
+                CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
+                    .map_err(|e| {
+                        println!("✗ UI Automation: 创建实例失败 - {:?}", e);
+                        e
+                    })?;
 
             // 获取焦点元素
-            let focused_element = automation.GetFocusedElement()?;
+            let focused_element = automation.GetFocusedElement()
+                .map_err(|e| {
+                    println!("✗ UI Automation: 获取焦点元素失败 - {:?}", e);
+                    e
+                })?;
 
             // 尝试获取 TextPattern
             let text_pattern: IUIAutomationTextPattern =
-                focused_element.GetCurrentPatternAs(UIA_TextPatternId)?;
+                focused_element.GetCurrentPatternAs(UIA_TextPatternId)
+                    .map_err(|e| {
+                        println!("✗ UI Automation: 获取 TextPattern 失败（当前应用可能不支持文本光标）- {:?}", e);
+                        e
+                    })?;
 
             // 获取选区（光标位置）
-            let selection_array = text_pattern.GetSelection()?;
-            let length = selection_array.Length()?;
+            let selection_array = text_pattern.GetSelection()
+                .map_err(|e| {
+                    println!("✗ UI Automation: 获取选区失败 - {:?}", e);
+                    e
+                })?;
+                
+            let length = selection_array.Length()
+                .map_err(|e| {
+                    println!("✗ UI Automation: 获取选区长度失败 - {:?}", e);
+                    e
+                })?;
 
             if length > 0 {
-                let selection_range = selection_array.GetElement(0)?;
+                let selection_range = selection_array.GetElement(0)
+                    .map_err(|e| {
+                        println!("✗ UI Automation: 获取选区元素失败 - {:?}", e);
+                        e
+                    })?;
 
                 // 获取选区的边界矩形（返回 *mut SAFEARRAY）
-                let rects = selection_range.GetBoundingRectangles()?;
+                let rects_array = selection_range.GetBoundingRectangles()
+                    .map_err(|e| {
+                        println!("✗ UI Automation: 获取边界矩形失败 - {:?}", e);
+                        e
+                    })?;
 
-                let rect_data = std::slice::from_raw_parts(rects as *mut f64, 4);
-                let x = rect_data[0] as i32;
-                let y = rect_data[1] as i32;
-                let height = rect_data[3] as i32;
+                // 正确访问 SAFEARRAY 数据
+                let mut data_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
+                if SafeArrayAccessData(rects_array, &mut data_ptr).is_ok() {
+                    let rect_data = std::slice::from_raw_parts(data_ptr as *const f64, 4);
+                    let x = rect_data[0] as i32;
+                    let y = rect_data[1] as i32;
+                    let height = rect_data[3] as i32;
 
-                return Ok(Position {
-                    x,
-                    y: y + height, // 光标底部位置
-                });
+                    // 释放 SAFEARRAY 访问
+                    let _ = SafeArrayUnaccessData(rects_array);
+
+                    println!("✓ UI Automation: 获取到光标位置 x={}, y={}, height={}", x, y, height);
+
+                    return Ok(Position {
+                        x,
+                        y: y + height, // 光标底部位置
+                    });
+                } else {
+                    println!("✗ UI Automation: 访问 SAFEARRAY 数据失败");
+                }
+            } else {
+                println!("✗ UI Automation: 选区为空（没有文本选择）");
             }
 
             Err(Error::from(windows::core::HRESULT(-1)))
