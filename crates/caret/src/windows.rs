@@ -1,8 +1,26 @@
 /// Windows 平台的光标位置获取实现
 /// 
 /// 使用混合策略以支持不同类型的应用程序：
-/// 1. GetGUIThreadInfo - 快速，支持标准 Windows 控件
-/// 2. UI Automation - 较慢但兼容性好，支持 Chrome、VS Code 等现代应用
+/// 
+/// 1. **GetGUIThreadInfo** - 快速，支持标准 Windows 控件
+///    - 适用：Sublime Text、Notepad、记事本等传统桌面应用
+///    - 优点：调用开销极低，响应迅速
+///    - 限制：仅支持使用标准 Win32 控件的应用
+/// 
+/// 2. **UI Automation** - 兼容性好，支持现代应用
+///    - 适用：Chrome、Edge、VS Code、Electron 应用等
+///    - 优点：支持自绘控件的现代应用
+///    - 限制：调用较慢，需要 COM 初始化
+/// 
+/// 3. **MSAA + SetWinEventHook** - 兜底策略，支持传统辅助功能应用
+///    - 适用：Microsoft Office、WinForms、WPF 等实现了 MSAA 的应用
+///    - 优点：事件驱动，自动缓存最近的光标位置
+///    - 限制：依赖应用实现 MSAA 接口，缓存有 2 秒有效期
+/// 
+/// ## 工作原理
+/// 
+/// 按优先级依次尝试上述三种策略，任一成功即返回结果。
+/// MSAA 策略使用后台线程监听系统级光标位置变化事件，将最近的位置缓存在内存中。
 
 use super::Position;
 use std::sync::{Mutex, OnceLock};
