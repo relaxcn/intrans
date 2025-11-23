@@ -28,9 +28,10 @@ fn toggle_main_window(app: tauri::AppHandle) {
             let _ = window.set_focus();
             
             if let Some(pos) = caret_pos {
+                tracing::debug!(x = pos.x, y = pos.y, "设置窗口位置到光标处");
                 let _ = window.set_position(tauri::Position::Physical(pos.into()));
             } else {
-                println!("✗ 所有光标获取方法都失败，将使用屏幕中央");
+                tracing::warn!("所有光标获取方法都失败，将使用屏幕中央");
                 let _ = window
                     .as_ref()
                     .window()

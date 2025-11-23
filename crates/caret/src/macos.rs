@@ -8,6 +8,7 @@ use super::Position;
 /// 获取当前活动窗口的光标位置
 /// 
 /// 当前未实现，始终返回 None
+#[tracing::instrument(name = "get_caret_position_macos")]
 pub fn get_position() -> Option<Position> {
     // TODO: 实现 macOS 平台的光标位置获取
     // 可能的实现方案：
@@ -15,6 +16,6 @@ pub fn get_position() -> Option<Position> {
     // 2. 使用 CGEvent 获取文本输入位置
     // 3. 使用其他 macOS 特定的框架
     
-    println!("⚠ macOS 平台光标获取功能尚未实现");
+    tracing::warn!("macOS 平台光标获取功能尚未实现");
     None
 }

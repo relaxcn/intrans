@@ -28,27 +28,29 @@ use windows::{
 /// 1. GetGUIThreadInfo（适用于 Sublime Text、Notepad 等）
 /// 2. UI Automation（适用于 Chrome、Edge、VS Code 等）
 /// 3. 失败则返回 None
+#[tracing::instrument(name = "get_caret_position")]
 pub fn get_position() -> Option<Position> {
     // 策略 1: 尝试使用 GetGUIThreadInfo（快速，支持标准控件）
     if let Some(pos) = try_get_from_gui_thread_info() {
-        println!("✓ 使用 GetGUIThreadInfo 获取光标位置");
+        tracing::info!(x = pos.x, y = pos.y, method = "GetGUIThreadInfo", "成功获取光标位置");
         return Some(pos);
     }
 
     // 策略 2: 回退到 UI Automation（较慢但兼容性更好，支持 Chrome 等）
     if let Some(pos) = try_get_from_ui_automation() {
-        println!("✓ 使用 UI Automation 获取光标位置");
+        tracing::info!(x = pos.x, y = pos.y, method = "UI Automation", "成功获取光标位置");
         return Some(pos);
     }
 
     // 策略 3: 都失败则返回 None
-    println!("✗ 所有光标获取方法都失败");
+    tracing::warn!("所有光标获取方法都失败");
     None
 }
 
 /// 策略 1: 使用 GetGUIThreadInfo 获取光标位置
 /// 
 /// 适用于使用标准 Windows 控件的应用（如 Sublime Text、Notepad 等）
+#[tracing::instrument(name = "get_from_gui_thread_info")]
 fn try_get_from_gui_thread_info() -> Option<Position> {
     unsafe {
         let foreground_window = GetForegroundWindow();
@@ -95,12 +97,13 @@ fn try_get_from_gui_thread_info() -> Option<Position> {
 /// 策略 2: 使用 UI Automation 获取光标位置
 /// 
 /// 适用于使用自定义渲染的现代应用（如 Chrome、VS Code 等）
+#[tracing::instrument(name = "get_from_ui_automation")]
 fn try_get_from_ui_automation() -> Option<Position> {
     unsafe {
         // 初始化 COM（S_OK 和 S_FALSE 都表示成功）
         let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         if hr != S_OK && hr != S_FALSE {
-            println!("✗ UI Automation: COM 初始化失败");
+            tracing::error!("COM 初始化失败");
             return None;
         }
 
@@ -109,14 +112,14 @@ fn try_get_from_ui_automation() -> Option<Position> {
             let automation: IUIAutomation =
                 CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
                     .map_err(|e| {
-                        println!("✗ UI Automation: 创建实例失败 - {:?}", e);
+                        tracing::error!(error = ?e, "创建 UI Automation 实例失败");
                         e
                     })?;
 
             // 获取焦点元素
             let focused_element = automation.GetFocusedElement()
                 .map_err(|e| {
-                    println!("✗ UI Automation: 获取焦点元素失败 - {:?}", e);
+                    tracing::debug!(error = ?e, "获取焦点元素失败");
                     e
                 })?;
 
@@ -124,34 +127,34 @@ fn try_get_from_ui_automation() -> Option<Position> {
             let text_pattern: IUIAutomationTextPattern =
                 focused_element.GetCurrentPatternAs(UIA_TextPatternId)
                     .map_err(|e| {
-                        println!("✗ UI Automation: 获取 TextPattern 失败（当前应用可能不支持文本光标）- {:?}", e);
+                        tracing::debug!(error = ?e, "获取 TextPattern 失败（当前应用可能不支持文本光标）");
                         e
                     })?;
 
             // 获取选区（光标位置）
             let selection_array = text_pattern.GetSelection()
                 .map_err(|e| {
-                    println!("✗ UI Automation: 获取选区失败 - {:?}", e);
+                    tracing::debug!(error = ?e, "获取选区失败");
                     e
                 })?;
                 
             let length = selection_array.Length()
                 .map_err(|e| {
-                    println!("✗ UI Automation: 获取选区长度失败 - {:?}", e);
+                    tracing::debug!(error = ?e, "获取选区长度失败");
                     e
                 })?;
 
             if length > 0 {
                 let selection_range = selection_array.GetElement(0)
                     .map_err(|e| {
-                        println!("✗ UI Automation: 获取选区元素失败 - {:?}", e);
+                        tracing::debug!(error = ?e, "获取选区元素失败");
                         e
                     })?;
 
                 // 获取选区的边界矩形（返回 *mut SAFEARRAY）
                 let rects_array = selection_range.GetBoundingRectangles()
                     .map_err(|e| {
-                        println!("✗ UI Automation: 获取边界矩形失败 - {:?}", e);
+                        tracing::debug!(error = ?e, "获取边界矩形失败");
                         e
                     })?;
 
@@ -166,17 +169,17 @@ fn try_get_from_ui_automation() -> Option<Position> {
                     // 释放 SAFEARRAY 访问
                     let _ = SafeArrayUnaccessData(rects_array);
 
-                    println!("✓ UI Automation: 获取到光标位置 x={}, y={}, height={}", x, y, height);
+                    tracing::debug!(x, y, height, "获取到光标位置");
 
                     return Ok(Position {
                         x,
                         y: y + height, // 光标底部位置
                     });
                 } else {
-                    println!("✗ UI Automation: 访问 SAFEARRAY 数据失败");
+                    tracing::debug!("访问 SAFEARRAY 数据失败");
                 }
             } else {
-                println!("✗ UI Automation: 选区为空（没有文本选择）");
+                tracing::debug!("选区为空（没有文本选择）");
             }
 
             Err(Error::from(windows::core::HRESULT(-1)))
