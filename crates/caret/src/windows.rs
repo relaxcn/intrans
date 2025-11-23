@@ -164,12 +164,20 @@ fn try_get_from_ui_automation() -> Option<Position> {
                     let rect_data = std::slice::from_raw_parts(data_ptr as *const f64, 4);
                     let x = rect_data[0] as i32;
                     let y = rect_data[1] as i32;
+                    let width = rect_data[2] as i32;
                     let height = rect_data[3] as i32;
 
                     // 释放 SAFEARRAY 访问
                     let _ = SafeArrayUnaccessData(rects_array);
 
-                    tracing::debug!(x, y, height, "获取到光标位置");
+                    tracing::debug!(x, y, width, height, "UI Automation 返回的原始坐标");
+
+                    // 验证坐标有效性：(0, 0) 通常表示无效位置
+                    // 在 VSCode 等应用中，UI Automation 可能返回 (0, 0) 表示光标位置未正确获取
+                    if x == 0 && y == 0 {
+                        tracing::debug!("检测到无效坐标 (0, 0)，可能是应用未正确暴露光标位置");
+                        return Err(Error::from(windows::core::HRESULT(-1)));
+                    }
 
                     return Ok(Position {
                         x,
