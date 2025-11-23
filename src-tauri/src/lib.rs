@@ -24,9 +24,7 @@ fn toggle_main_window(app: tauri::AppHandle) {
             let caret_pos = caret::get_position();
             
             let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
-            
+
             if let Some(pos) = caret_pos {
                 tracing::debug!(x = pos.x, y = pos.y, "设置窗口位置到光标处");
                 let _ = window.set_position(tauri::Position::Physical(pos.into()));
@@ -37,6 +35,9 @@ fn toggle_main_window(app: tauri::AppHandle) {
                     .window()
                     .move_window(Position::Center);
             }
+
+            let _ = window.show();
+            let _ = window.set_focus();
         }
     }
 }
