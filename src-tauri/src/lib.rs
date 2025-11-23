@@ -4,6 +4,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, WindowEvent,
 };
+use caret;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -20,15 +21,16 @@ fn toggle_main_window(app: tauri::AppHandle) {
             let _ = window.hide();
         } else {
             // 先获取光标位置（在窗口成为前台之前）
-            let caret_pos = get_caret_position();
+            let caret_pos = caret::get_position();
             
             let _ = window.unminimize();
             let _ = window.show();
             let _ = window.set_focus();
             
             if let Some(pos) = caret_pos {
-                let _ = window.set_position(tauri::Position::Physical(pos));
+                let _ = window.set_position(tauri::Position::Physical(pos.into()));
             } else {
+                println!("✗ 所有光标获取方法都失败，将使用屏幕中央");
                 let _ = window
                     .as_ref()
                     .window()
@@ -111,58 +113,4 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[cfg(target_os = "windows")]
-fn get_caret_position() -> Option<tauri::PhysicalPosition<i32>> {
-    use windows::Win32::Foundation::POINT;
-    use windows::Win32::Graphics::Gdi::ClientToScreen;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, GUITHREADINFO,
-    };
-
-    unsafe {
-        let foreground_window = GetForegroundWindow();
-        if foreground_window.0.is_null() {
-            return None;
-        }
-
-        let mut process_id = 0;
-        let thread_id = GetWindowThreadProcessId(foreground_window, Some(&mut process_id));
-        println!("thread_id: {thread_id}");
-
-        let mut gui_info = GUITHREADINFO::default();
-        gui_info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
-
-        if GetGUIThreadInfo(thread_id, &mut gui_info).is_ok() {
-            let caret_rect = gui_info.rcCaret;
-
-            // 检查光标矩形是否完全为空（所有字段都为 0）
-            if caret_rect.left == 0 && caret_rect.top == 0 
-                && caret_rect.right == 0 && caret_rect.bottom == 0 {
-                return None;
-            }
-
-            let mut point = POINT {
-                x: caret_rect.left,
-                y: caret_rect.bottom,
-            };
-
-            if !gui_info.hwndCaret.0.is_null() {
-                if ClientToScreen(gui_info.hwndCaret, &mut point).as_bool() {
-                    return Some(tauri::PhysicalPosition {
-                        x: point.x,
-                        y: point.y,
-                    });
-                }
-            }
-        }
-    }
-    None
-}
-
-// TODO: implement for macos
-#[cfg(target_os = "macos")]
-fn get_caret_position() -> Option<tauri::PhysicalPosition<i32>> {
-    None
 }

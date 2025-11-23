@@ -390,6 +390,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "caret"
+version = "0.1.0"
+dependencies = [
+ "tauri",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1818,6 +1826,7 @@ dependencies = [
 name = "intrans"
 version = "0.1.0"
 dependencies = [
+ "caret",
  "serde",
  "serde_json",
  "tauri",
