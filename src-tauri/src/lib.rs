@@ -67,6 +67,9 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // 初始化光标位置获取模块（提前启动 Windows MSAA 钩子等）
+            caret::init();
+
             #[cfg(desktop)]
             {
                 app.handle().plugin(tauri_plugin_global_shortcut::Builder::new().build())?;

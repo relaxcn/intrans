@@ -211,7 +211,7 @@ fn try_get_from_msaa_hook() -> Option<Position> {
     None
 }
 
-fn ensure_msaa_hook_started() {
+pub fn ensure_msaa_hook_started() {
     use std::sync::Once;
     static START_HOOK: Once = Once::new();
 
