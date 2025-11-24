@@ -182,6 +182,9 @@ async function handleKeyDown(e: KeyboardEvent) {
     return;
   }
 
+  // Prevent event from bubbling to window listeners (e.g., our local shortcuts)
+  e.stopPropagation();
+
   const keys = getCurrentModifiers(e);
   const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
 
