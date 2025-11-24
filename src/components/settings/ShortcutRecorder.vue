@@ -99,6 +99,79 @@ function getCurrentModifiers(e: KeyboardEvent): string[] {
   return keys;
 }
 
+const CODE_MAP: Record<string, string> = {
+  'Backquote': '`',
+  'Minus': '-',
+  'Equal': '=',
+  'BracketLeft': '[',
+  'BracketRight': ']',
+  'Backslash': '\\',
+  'Semicolon': ';',
+  'Quote': "'",
+  'Comma': ',',
+  'Period': '.',
+  'Slash': '/',
+  'Space': 'Space',
+  'ArrowUp': 'Up',
+  'ArrowDown': 'Down',
+  'ArrowLeft': 'Left',
+  'ArrowRight': 'Right',
+  'Tab': 'Tab',
+  'Enter': 'Enter',
+  'Backspace': 'Backspace',
+  'Delete': 'Delete',
+  'Insert': 'Insert',
+  'Home': 'Home',
+  'End': 'End',
+  'PageUp': 'PageUp',
+  'PageDown': 'PageDown',
+  'Escape': 'Esc',
+};
+
+// Add F-keys
+for (let i = 1; i <= 24; i++) {
+  CODE_MAP[`F${i}`] = `F${i}`;
+}
+
+function getStandardKey(e: KeyboardEvent): string {
+  const code = e.code;
+  
+  // Letters
+  if (code.startsWith('Key')) {
+    return code.slice(3).toUpperCase();
+  }
+
+  // Digits
+  if (code.startsWith('Digit')) {
+    return code.slice(5);
+  }
+
+  // Numpad
+  if (code.startsWith('Numpad')) {
+    if (code.length === 7 && !isNaN(Number(code[6]))) {
+        return code[6];
+    }
+    switch (code) {
+        case 'NumpadAdd': return '+';
+        case 'NumpadSubtract': return '-';
+        case 'NumpadMultiply': return '*';
+        case 'NumpadDivide': return '/';
+        case 'NumpadDecimal': return '.';
+        case 'NumpadEnter': return 'Enter';
+    }
+  }
+
+  // Standard Map
+  if (CODE_MAP[code]) {
+    return CODE_MAP[code];
+  }
+
+  // Fallback
+  let key = e.key.toUpperCase();
+  if (key === ' ') return 'Space';
+  return key;
+}
+
 async function handleKeyDown(e: KeyboardEvent) {
   if (!isRecording.value) return;
 
@@ -113,16 +186,7 @@ async function handleKeyDown(e: KeyboardEvent) {
   const isModifier = ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key);
 
   if (!isModifier) {
-    let key = e.key.toUpperCase();
-    
-    if (key === ' ') key = 'Space';
-    if (e.code === 'Space') key = 'Space';
-    
-    if (key === 'ARROWUP') key = 'Up';
-    if (key === 'ARROWDOWN') key = 'Down';
-    if (key === 'ARROWLEFT') key = 'Left';
-    if (key === 'ARROWRIGHT') key = 'Right';
-
+    const key = getStandardKey(e);
     keys.push(key);
   }
 
