@@ -20,6 +20,7 @@ interface Session {
 }
 
 const input = ref("");
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const sessions = ref<Session[]>([
   { id: `${Date.now()}`, messages: [] },
 ]);
@@ -154,10 +155,12 @@ onMounted(async () => {
   }
 
   window.addEventListener("keydown", handleKeydown);
+  window.addEventListener("focus", handleWindowFocus);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown);
+  window.removeEventListener("focus", handleWindowFocus);
 
   if (unlistenSettingsChanged) {
     unlistenSettingsChanged();
@@ -264,6 +267,12 @@ function navigateHistory(direction: -1 | 1) {
   });
 }
 
+function handleWindowFocus() {
+  nextTick(() => {
+    textareaRef.value?.focus();
+  });
+}
+
 async function handleKeydown(event: KeyboardEvent) {
   if (event.key === "Escape") {
     event.preventDefault();
@@ -298,7 +307,7 @@ async function handleKeydown(event: KeyboardEvent) {
     }
     return;
   }
-
+  
   if (
     event.key === "," &&
     event.ctrlKey &&
@@ -405,6 +414,7 @@ async function handleSessionEnd() {
     >
         <div class="p-4 pb-2">
           <textarea
+            ref="textareaRef"
             v-model="input"
             placeholder="What would you like to translate?"
             class="w-full resize-none outline-none text-gray-700 placeholder-gray-400 text-base bg-transparent max-h-32 overflow-y-auto"
