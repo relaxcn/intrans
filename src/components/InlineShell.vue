@@ -152,9 +152,13 @@ onMounted(async () => {
   } catch (error) {
     console.error("Failed to listen for session end", error);
   }
+
+  window.addEventListener("keydown", handleKeydown);
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleKeydown);
+
   if (unlistenSettingsChanged) {
     unlistenSettingsChanged();
     unlistenSettingsChanged = null;
@@ -344,7 +348,6 @@ async function handleSessionEnd() {
   <div
     class="h-screen w-screen flex flex-col bg-transparent"
     data-tauri-drag-region
-    @keydown="handleKeydown"
   >
     <div
       class="w-full h-full bg-white rounded-xl shadow-xl border border-gray-200 flex flex-col transition-all duration-200 ease-in-out relative overflow-hidden"
