@@ -347,7 +347,7 @@ async function handleSessionEnd() {
     @keydown="handleKeydown"
   >
     <div
-      class="w-full h-full bg-white rounded-xl shadow-sm flex flex-col transition-all duration-200 ease-in-out relative overflow-hidden"
+      class="w-full h-full bg-white rounded-xl shadow-xl border border-gray-200 flex flex-col transition-all duration-200 ease-in-out relative overflow-hidden"
     >
       <div
         v-if="isExpanded"
