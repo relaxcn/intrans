@@ -276,9 +276,14 @@ function handleWindowFocus() {
 async function handleKeydown(event: KeyboardEvent) {
   if (event.key === "Escape") {
     event.preventDefault();
-    await handleSessionEnd();
-    const appWindow = getCurrentWindow();
-    await appWindow.hide();
+    const liveSession = getLiveSession();
+
+    if (liveSession.messages.length > 0) {
+      await handleSessionEnd();
+    } else {
+      const appWindow = getCurrentWindow();
+      await appWindow.hide();
+    }
     return;
   }
 
