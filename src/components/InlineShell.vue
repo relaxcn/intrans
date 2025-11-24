@@ -34,6 +34,10 @@ const isThinking = ref(false);
 const provider = ref("openai");
 const modelInput = ref("gpt-4.1");
 
+const containerStyle = ref<Record<string, string>>({
+  height: '100%',
+});
+
 const INITIAL_WIDTH = 700;
 const INITIAL_HEIGHT = 120;
 const MAX_HEIGHT = 600;
@@ -87,31 +91,75 @@ async function loadSettings() {
 }
 
 async function resizeWindow(expanded: boolean) {
-  isExpanded.value = expanded;
   const appWindow = getCurrentWindow();
+  const factor = await appWindow.scaleFactor();
+  const size = await appWindow.outerSize();
+  const currentHeight = size.toLogical(factor).height;
 
-  if (!expanded) {
-    await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, INITIAL_HEIGHT));
-    return;
-  }
+  if (expanded) {
+    isExpanded.value = true;
+    await nextTick();
+    const content = document.getElementById("chat-content");
+    const inputArea = document.getElementById("input-area");
 
-  await nextTick();
-  const content = document.getElementById("chat-content");
-  const inputArea = document.getElementById("input-area");
+    if (content && inputArea) {
+      const totalContentHeight = content.scrollHeight + inputArea.offsetHeight + 4;
+      const targetHeight = Math.min(Math.max(totalContentHeight, INITIAL_HEIGHT), MAX_HEIGHT);
 
-  if (content && inputArea) {
-    // 计算所需高度：内容高度 + 输入框区域高度 + 容器Padding修正
-    // content.scrollHeight 包含了内部的所有高度
-    // inputArea.offsetHeight 是底部输入框的高度
-    const totalContentHeight = content.scrollHeight + inputArea.offsetHeight;
-    
-    // 限制在 INITIAL_HEIGHT 和 MAX_HEIGHT 之间
-    const newHeight = Math.min(Math.max(totalContentHeight, INITIAL_HEIGHT), MAX_HEIGHT);
-    
-    await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, newHeight));
+      if (targetHeight > currentHeight) {
+        // Expand: Resize window first (transparent area increases), then animate UI
+        containerStyle.value = {
+          height: `${currentHeight}px`,
+          transition: 'none',
+          overflow: 'hidden',
+        };
+        
+        await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, targetHeight));
+        
+        // Force layout reflow
+        document.body.offsetHeight; 
+
+        requestAnimationFrame(() => {
+          containerStyle.value = {
+            height: `${targetHeight}px`,
+            transition: 'height 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+            overflow: 'hidden',
+          };
+          
+          setTimeout(() => {
+            containerStyle.value = { height: '100%' };
+          }, 300);
+        });
+      } else if (targetHeight < currentHeight) {
+         // Shrink logic if needed when expanded (e.g. content removed)
+         // For now, assume mostly expanding when active, handled same as below or simple resize
+         await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, targetHeight));
+      }
+    }
   } else {
-    // Fallback if elements not found
-    await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, INITIAL_HEIGHT));
+    // Collapse: Animate UI shrink first, then resize window
+    containerStyle.value = {
+      height: `${currentHeight}px`,
+      transition: 'none',
+      overflow: 'hidden',
+    };
+
+    // Force reflow
+    document.body.offsetHeight;
+
+    requestAnimationFrame(() => {
+      containerStyle.value = {
+        height: `${INITIAL_HEIGHT}px`,
+        transition: 'height 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+        overflow: 'hidden',
+      };
+    });
+
+    setTimeout(async () => {
+      await appWindow.setSize(new LogicalSize(INITIAL_WIDTH, INITIAL_HEIGHT));
+      isExpanded.value = false;
+      containerStyle.value = { height: '100%' };
+    }, 300);
   }
 }
 
@@ -353,7 +401,6 @@ async function handleSessionEnd() {
   activeSessionIndex.value = sessions.value.length - 1;
 
   input.value = "";
-  isExpanded.value = false;
   await resizeWindow(false);
 }
 </script>
@@ -364,7 +411,8 @@ async function handleSessionEnd() {
     data-tauri-drag-region
   >
     <div
-      class="w-full h-full bg-white rounded-xl shadow-xl border border-gray-200 flex flex-col transition-all duration-200 ease-in-out relative overflow-hidden"
+      class="w-full h-full bg-white rounded-xl shadow-xl border border-gray-200 flex flex-col relative overflow-hidden"
+      :style="containerStyle"
     >
       <div
         v-if="isExpanded"
