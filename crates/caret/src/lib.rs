@@ -55,13 +55,3 @@ pub fn get_position() -> Option<Position> {
         None
     }
 }
-
-/// 初始化光标获取模块
-/// 
-/// 建议在应用启动时调用此函数，以确保某些需要后台监听的策略（如 Windows MSAA）能正常工作。
-pub fn init() {
-    #[cfg(target_os = "windows")]
-    {
-        windows::ensure_msaa_hook_started();
-    }
-}
