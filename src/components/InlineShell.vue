@@ -4,6 +4,8 @@ import { Image, Mic, ArrowUp } from "lucide-vue-next";
 import { getCurrentWindow, LogicalPosition, LogicalSize } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { Store } from "@tauri-apps/plugin-store";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { LlmService } from "../services/llmService";
 
 interface Message {
   id: string;
@@ -33,6 +35,8 @@ const isExpanded = ref(false);
 const isThinking = ref(false);
 const provider = ref("openai");
 const modelInput = ref("gpt-4.1");
+const targetLang = ref("Simplified Chinese");
+const focusStyles = ref(["Literal & Accurate", "Professional & Formal", "Creative & Idiomatic"]);
 
 const containerStyle = ref<Record<string, string>>({
   height: '100%',
@@ -80,11 +84,23 @@ async function loadSettings() {
 
     const savedProvider = await store.get<string>("provider");
     const savedModel = await store.get<string>("model");
+    const savedTargetLang = await store.get<string>("targetLang");
+    const savedFocus1 = await store.get<string>("focus1");
+    const savedFocus2 = await store.get<string>("focus2");
+    const savedFocus3 = await store.get<string>("focus3");
 
     if (savedProvider) provider.value = savedProvider;
     if (savedModel) {
       modelInput.value = savedModel;
     }
+    if (savedTargetLang) targetLang.value = savedTargetLang;
+    
+    const styles = [];
+    if (savedFocus1) styles.push(savedFocus1);
+    if (savedFocus2) styles.push(savedFocus2);
+    if (savedFocus3) styles.push(savedFocus3);
+    if (styles.length === 3) focusStyles.value = styles;
+
   } catch (error) {
     console.error("Failed to load settings in inline shell", error);
   }
@@ -221,7 +237,7 @@ onBeforeUnmount(() => {
   }
 });
 
-function handleSend() {
+async function handleSend() {
   if (!input.value.trim() || isThinking.value) return;
 
   // 将当前会话移动到末尾
@@ -249,25 +265,36 @@ function handleSend() {
   if (!isExpanded.value) {
     resizeWindow(true);
   }
+  scrollToBottom();
 
-  setTimeout(() => {
+  try {
+    const options = await LlmService.getInstance().translate(
+      userMsg.content,
+      targetLang.value,
+      focusStyles.value
+    );
+
     const aiMsg: Message = {
       id: (Date.now() + 1).toString(),
       role: "assistant",
       content: "Here are some translation options:",
-      options: [
-        "Translation Option 1: This is the first possible translation.",
-        "Translation Option 2: A second, perhaps more formal translation.",
-        "Translation Option 3: A creative adaptation of the text.",
-      ],
+      options: options,
       timestamp: Date.now(),
     };
     session.messages.push(aiMsg);
+  } catch (error) {
+    console.error("Translation failed", error);
+    const errorMsg: Message = {
+      id: (Date.now() + 1).toString(),
+      role: "assistant",
+      content: "Sorry, translation failed. Please check your API key and settings.",
+      timestamp: Date.now(),
+    };
+    session.messages.push(errorMsg);
+  } finally {
     isThinking.value = false;
     scrollToBottom();
-  }, 600);
-
-  scrollToBottom();
+  }
 }
 
 function scrollToBottom() {
@@ -279,14 +306,20 @@ function scrollToBottom() {
   });
 }
 
-function selectOption(messageIndex: number, optionIndex: number) {
+async function selectOption(messageIndex: number, optionIndex: number) {
   const session = sessions.value[activeSessionIndex.value];
   if (!session) return;
 
   const msg = session.messages[messageIndex];
   if (msg && msg.options) {
     msg.selectedOptionIndex = optionIndex;
-    console.log("Selected option:", msg.options[optionIndex]);
+    const textToCopy = msg.options[optionIndex];
+    try {
+      await writeText(textToCopy);
+      console.log("Copied to clipboard:", textToCopy);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
   }
 }
 
@@ -334,10 +367,31 @@ async function handleKeydown(event: KeyboardEvent) {
     }
     return;
   }
+  
+  const session = sessions.value[activeSessionIndex.value];
+  const lastMsg = session?.messages[session.messages.length - 1];
+  const hasOptions = lastMsg && lastMsg.role === 'assistant' && lastMsg.options && lastMsg.options.length > 0;
+
+  if (event.key === "Tab" && hasOptions) {
+    event.preventDefault();
+    const currentIdx = lastMsg.selectedOptionIndex ?? -1;
+    const nextIdx = (currentIdx + 1) % (lastMsg.options?.length || 3);
+    lastMsg.selectedOptionIndex = nextIdx;
+    return;
+  }
 
   if (event.key === "Enter") {
     event.preventDefault();
-    handleSend();
+    
+    if (hasOptions && typeof lastMsg.selectedOptionIndex === 'number' && lastMsg.selectedOptionIndex >= 0) {
+        await selectOption(session.messages.length - 1, lastMsg.selectedOptionIndex);
+        // Optional: Close window or reset logic after copy? 
+        // Requirement says "Enter key, will copy to clipboard". 
+        // Doesn't specify hiding window. But usually users might want to hide.
+        // Let's keep it visible for now.
+    } else {
+        handleSend();
+    }
     return;
   }
 

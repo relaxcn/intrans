@@ -3,12 +3,13 @@ import { ref, onMounted, computed } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { Store } from "@tauri-apps/plugin-store";
-import { Bot, Keyboard } from "lucide-vue-next";
+import { Bot, Keyboard, Languages } from "lucide-vue-next";
 
 import AIProviderSettings from "./settings/AIProviderSettings.vue";
 import ShortcutSettings from "./settings/ShortcutSettings.vue";
+import TranslationSettings from "./settings/TranslationSettings.vue";
 
-type Tab = "ai" | "shortcuts";
+type Tab = "ai" | "shortcuts" | "translation";
 const currentTab = ref<Tab>("ai");
 
 interface SettingsState {
@@ -18,6 +19,10 @@ interface SettingsState {
   baseUrl: string;
   toggleMainShortcut: string;
   openSettingsShortcut: string;
+  targetLang: string;
+  focus1: string;
+  focus2: string;
+  focus3: string;
 }
 
 const defaultState: SettingsState = {
@@ -27,6 +32,10 @@ const defaultState: SettingsState = {
   baseUrl: "",
   toggleMainShortcut: "Ctrl+Alt+Space",
   openSettingsShortcut: "Ctrl+Shift+,",
+  targetLang: "Simplified Chinese",
+  focus1: "Literal & Accurate",
+  focus2: "Professional & Formal",
+  focus3: "Creative & Idiomatic",
 };
 
 const formData = ref<SettingsState>({ ...defaultState });
@@ -57,6 +66,10 @@ async function loadSettings() {
     const savedBaseUrl = await store.get<string>("baseUrl");
     const savedToggleMain = await store.get<string>("toggleMainShortcut");
     const savedOpenSettings = await store.get<string>("openSettingsShortcut");
+    const savedTargetLang = await store.get<string>("targetLang");
+    const savedFocus1 = await store.get<string>("focus1");
+    const savedFocus2 = await store.get<string>("focus2");
+    const savedFocus3 = await store.get<string>("focus3");
 
     if (savedProvider) loaded.provider = savedProvider;
     if (savedModel) loaded.model = savedModel;
@@ -64,6 +77,10 @@ async function loadSettings() {
     if (savedBaseUrl) loaded.baseUrl = savedBaseUrl;
     if (savedToggleMain) loaded.toggleMainShortcut = savedToggleMain;
     if (savedOpenSettings) loaded.openSettingsShortcut = savedOpenSettings;
+    if (savedTargetLang) loaded.targetLang = savedTargetLang;
+    if (savedFocus1) loaded.focus1 = savedFocus1;
+    if (savedFocus2) loaded.focus2 = savedFocus2;
+    if (savedFocus3) loaded.focus3 = savedFocus3;
 
     // Update both current form and saved state
     formData.value = { ...loaded };
@@ -92,6 +109,11 @@ async function saveSettings() {
     
     await store.set("toggleMainShortcut", formData.value.toggleMainShortcut);
     await store.set("openSettingsShortcut", formData.value.openSettingsShortcut);
+
+    await store.set("targetLang", formData.value.targetLang);
+    await store.set("focus1", formData.value.focus1);
+    await store.set("focus2", formData.value.focus2);
+    await store.set("focus3", formData.value.focus3);
 
     await store.save();
     await emit("settings-changed");
@@ -139,6 +161,17 @@ async function handleCancel() {
         </button>
 
         <button
+          @click="currentTab = 'translation'"
+          :class="[
+            currentTab === 'translation' ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+            'group w-full flex items-center px-3 py-2 text-sm font-medium rounded-md'
+          ]"
+        >
+          <Languages class="shrink-0 -ml-1 mr-3 h-5 w-5 text-gray-500" />
+          Translation
+        </button>
+
+        <button
           @click="currentTab = 'shortcuts'"
           :class="[
             currentTab === 'shortcuts' ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
@@ -156,7 +189,11 @@ async function handleCancel() {
       <div class="flex-1 overflow-y-auto p-8">
         <div class="max-w-2xl mx-auto">
             <h2 class="text-lg font-medium text-gray-900 mb-6">
-              {{ currentTab === 'ai' ? 'AI Provider Settings' : 'Keyboard Shortcuts' }}
+              {{ 
+                currentTab === 'ai' ? 'AI Provider Settings' : 
+                currentTab === 'translation' ? 'Translation Settings' :
+                'Keyboard Shortcuts' 
+              }}
             </h2>
             
             <AIProviderSettings
@@ -165,6 +202,14 @@ async function handleCancel() {
               v-model:model="formData.model"
               v-model:apiKey="formData.apiKey"
               v-model:baseUrl="formData.baseUrl"
+            />
+
+            <TranslationSettings
+              v-if="currentTab === 'translation'"
+              v-model:targetLang="formData.targetLang"
+              v-model:focus1="formData.focus1"
+              v-model:focus2="formData.focus2"
+              v-model:focus3="formData.focus3"
             />
 
             <ShortcutSettings
