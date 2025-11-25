@@ -12,15 +12,20 @@
 ///    - 优点：支持自绘控件的现代应用
 ///    - 限制：调用较慢，需要 COM 初始化
 /// 
-/// 3. **MSAA + SetWinEventHook** - 兜底策略，支持传统辅助功能应用
+/// 3. **MSAA 主动查询** - 同步查询，支持传统辅助功能应用
 ///    - 适用：Microsoft Office、WinForms、WPF 等实现了 MSAA 的应用
+///    - 优点：同步实时查询，不依赖缓存
+///    - 限制：依赖应用实现 MSAA 接口
+/// 
+/// 4. **MSAA + SetWinEventHook** - 兜底策略，事件驱动缓存
+///    - 适用：同上，作为主动查询的补充
 ///    - 优点：事件驱动，自动缓存最近的光标位置
-///    - 限制：依赖应用实现 MSAA 接口，缓存有 2 秒有效期
+///    - 限制：缓存有 2 秒有效期
 /// 
 /// ## 工作原理
 /// 
-/// 按优先级依次尝试上述三种策略，任一成功即返回结果。
-/// MSAA 策略使用后台线程监听系统级光标位置变化事件，将最近的位置缓存在内存中。
+/// 按优先级依次尝试上述四种策略，任一成功即返回结果。
+/// MSAA 钩子策略使用后台线程监听系统级光标位置变化事件，将最近的位置缓存在内存中。
 
 use super::Position;
 use std::sync::{Mutex, OnceLock};
@@ -74,13 +79,19 @@ pub fn get_position() -> Option<Position> {
         return Some(pos);
     }
 
-    // 策略 3: 尝试从 MSAA 钩子缓存中获取（适用于传统 MSAA 应用）
+    // 策略 3: 尝试使用 MSAA 主动查询（适用于传统 MSAA 应用）
+    if let Some(pos) = try_get_from_msaa_query() {
+        tracing::info!(x = pos.x, y = pos.y, method = "MSAA Query", "成功获取光标位置");
+        return Some(pos);
+    }
+
+    // 策略 4: 尝试从 MSAA 钩子缓存中获取（兜底）
     if let Some(pos) = try_get_from_msaa_hook() {
         tracing::info!(x = pos.x, y = pos.y, method = "MSAA Hook", "成功获取光标位置");
         return Some(pos);
     }
 
-    // 策略 4: 都失败则返回 None
+    // 策略 5: 都失败则返回 None
     tracing::warn!("所有光标获取方法都失败");
     None
 }
@@ -192,7 +203,102 @@ fn try_get_from_ui_automation() -> Option<Position> {
     }
 }
 
-/// 策略 3: 从 MSAA 钩子缓存中获取光标位置
+/// 策略 3: 使用 MSAA 主动查询光标位置
+/// 
+/// 通过 AccessibleObjectFromWindow + OBJID_CARET 直接获取焦点窗口的光标位置。
+/// 这是同步、实时的查询方式，不依赖事件缓存。
+#[tracing::instrument(name = "get_from_msaa_query")]
+fn try_get_from_msaa_query() -> Option<Position> {
+    unsafe {
+        // 先获取前台窗口
+        let foreground_window = GetForegroundWindow();
+        if foreground_window.0.is_null() {
+            tracing::debug!("MSAA Query: 无法获取前台窗口");
+            return None;
+        }
+
+        // 获取前台窗口的线程 ID
+        let mut process_id = 0;
+        let thread_id = GetWindowThreadProcessId(foreground_window, Some(&mut process_id));
+
+        // 通过 GetGUIThreadInfo 获取焦点窗口
+        let mut gui_info = GUITHREADINFO::default();
+        gui_info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
+
+        if GetGUIThreadInfo(thread_id, &mut gui_info).is_err() {
+            tracing::debug!("MSAA Query: GetGUIThreadInfo 失败");
+            return None;
+        }
+
+        // 优先使用 hwndCaret（光标所在窗口），否则使用 hwndFocus（焦点窗口）
+        let target_hwnd = if !gui_info.hwndCaret.0.is_null() {
+            tracing::debug!("MSAA Query: 使用 hwndCaret");
+            gui_info.hwndCaret
+        } else if !gui_info.hwndFocus.0.is_null() {
+            tracing::debug!("MSAA Query: 使用 hwndFocus");
+            gui_info.hwndFocus
+        } else {
+            tracing::debug!("MSAA Query: hwndCaret 和 hwndFocus 都为空");
+            return None;
+        };
+
+        // OBJID_CARET 在 Windows API 中定义为 -8
+        const OBJID_CARET: i32 = -8;
+
+        let mut p_acc: Option<IAccessible> = None;
+        
+        // 使用 AccessibleObjectFromWindow 获取光标的 IAccessible 对象
+        let hr = AccessibleObjectFromWindow(
+            target_hwnd,
+            OBJID_CARET as u32,
+            &IAccessible::IID,
+            &mut p_acc as *mut _ as *mut *mut std::ffi::c_void,
+        );
+
+        if hr.is_err() {
+            tracing::debug!("MSAA Query: AccessibleObjectFromWindow 失败: {:?}", hr);
+            return None;
+        }
+        
+        if p_acc.is_none() {
+            tracing::debug!("MSAA Query: p_acc 为空");
+            return None;
+        }
+
+        let acc = p_acc.unwrap();
+
+        // 构造 CHILDID_SELF 的 VARIANT (VT_I4, value = 0)
+        let var_child = VARIANT::from(0i32);
+
+        let mut left = 0;
+        let mut top = 0;
+        let mut width = 0;
+        let mut height = 0;
+
+        let location_result = acc.accLocation(
+            &mut left,
+            &mut top,
+            &mut width,
+            &mut height,
+            &var_child,
+        );
+
+        tracing::debug!(
+            "MSAA Query: accLocation 结果: {:?}, left={}, top={}, width={}, height={}",
+            location_result, left, top, width, height
+        );
+
+        if location_result.is_ok() && (left > 0 || top > 0) && width > 0 && height > 0 {
+            return Some(Position {
+                x: left,
+                y: top + height,
+            });
+        }
+    }
+    None
+}
+
+/// 策略 4: 从 MSAA 钩子缓存中获取光标位置
 #[tracing::instrument(name = "get_from_msaa_hook")]
 fn try_get_from_msaa_hook() -> Option<Position> {
     ensure_msaa_hook_started();
