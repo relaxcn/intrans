@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { LANGUAGES } from "../../constants/languages";
+
 defineProps<{
   targetLang: string;
   focus1: string;
@@ -19,13 +21,15 @@ defineEmits<{
     <div>
       <label class="block text-sm font-medium text-gray-700">Target Language</label>
       <div class="mt-1">
-        <input
-          type="text"
+        <select
           :value="targetLang"
-          @input="$emit('update:targetLang', ($event.target as HTMLInputElement).value)"
-          placeholder="e.g. Simplified Chinese"
+          @change="$emit('update:targetLang', ($event.target as HTMLSelectElement).value)"
           class="block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm p-2 border"
-        />
+        >
+          <option v-for="lang in LANGUAGES" :key="lang.code" :value="lang.code">
+            {{ lang.name }}
+          </option>
+        </select>
         <p class="mt-2 text-sm text-gray-500">
           The language you want to translate into.
         </p>

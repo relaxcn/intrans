@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
-import { Image, Mic, ArrowUp } from "lucide-vue-next";
+import { Image, Mic, ArrowUp, ChevronDown } from "lucide-vue-next";
 import { getCurrentWindow, LogicalPosition, LogicalSize } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { Store } from "@tauri-apps/plugin-store";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { LlmService } from "../services/llmService";
+import { LANGUAGES } from "../constants/languages";
 
 interface Message {
   id: string;
@@ -543,6 +544,21 @@ async function handleSessionEnd() {
             >
               <Mic class="w-5 h-5" />
             </button>
+
+            <div class="h-4 w-px bg-gray-200 mx-1"></div>
+
+            <div class="relative flex items-center group">
+              <select
+                v-model="targetLang"
+                class="appearance-none bg-transparent text-gray-600 hover:bg-gray-100 rounded-md py-1.5 pl-2 pr-7 text-xs font-medium focus:outline-none focus:ring-0 cursor-pointer transition-colors truncate max-w-[140px]"
+                title="Target Language"
+              >
+                <option v-for="lang in LANGUAGES" :key="lang.code" :value="lang.code">
+                  {{ lang.name }}
+                </option>
+              </select>
+              <ChevronDown class="w-3 h-3 text-gray-400 absolute right-2 pointer-events-none group-hover:text-gray-600" />
+            </div>
           </div>
 
           <button
