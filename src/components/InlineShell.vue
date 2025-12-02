@@ -438,10 +438,9 @@ async function handleKeydown(event: KeyboardEvent) {
     
     if (hasOptions && typeof lastMsg.selectedOptionIndex === 'number' && lastMsg.selectedOptionIndex >= 0) {
         await selectOption(session.messages.length - 1, lastMsg.selectedOptionIndex);
-        // Optional: Close window or reset logic after copy? 
-        // Requirement says "Enter key, will copy to clipboard". 
-        // Doesn't specify hiding window. But usually users might want to hide.
-        // Let's keep it visible for now.
+        // 复制后关闭窗口
+        const appWindow = getCurrentWindow();
+        await appWindow.hide();
     } else {
         handleSend();
     }
@@ -541,7 +540,12 @@ async function handleSessionEnd() {
               <button
                 v-for="(opt, optIdx) in msg.options"
                 :key="optIdx"
-                class="text-left px-2 py-2 rounded-lg transition-all duration-200 text-sm group hover:bg-gray-50 flex items-start gap-3"
+                class="text-left px-2 py-2 rounded-lg transition-all duration-200 text-sm group flex items-start gap-3"
+                :class="[
+                  msg.selectedOptionIndex === optIdx
+                    ? 'bg-blue-50/80 ring-2 ring-blue-400/60 shadow-[0_0_12px_rgba(59,130,246,0.4)]'
+                    : 'hover:bg-gray-50'
+                ]"
                 @click="selectOption(idx, optIdx)"
               >
                 <span
