@@ -82,6 +82,14 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "settings" => {
+                        // 打开设置时隐藏 main 窗口
+                        if let Some(main_win) = app.get_webview_window("main") {
+                            if main_win.is_visible().unwrap_or(false) {
+                                let _ = app.emit("session-ended", ());
+                                let _ = main_win.hide();
+                            }
+                        }
+                        
                         if let Some(window) = app.get_webview_window("settings") {
                             let _ = window.show();
                             let _ = window.set_focus();

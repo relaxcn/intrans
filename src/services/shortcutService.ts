@@ -42,6 +42,13 @@ function setupLocalShortcut(shortcut: string) {
   localKeyHandler = async (e: KeyboardEvent) => {
     if (matchShortcut(e, shortcut)) {
       e.preventDefault();
+      
+      // 打开设置时隐藏 main 窗口
+      const mainWin = await WebviewWindow.getByLabel('main');
+      if (mainWin && await mainWin.isVisible()) {
+        await invoke('toggle_main_window');
+      }
+      
       const settingsWin = await WebviewWindow.getByLabel('settings');
       if (settingsWin) {
         await settingsWin.unminimize();
