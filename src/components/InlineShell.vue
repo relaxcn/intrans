@@ -45,8 +45,8 @@ const containerStyle = ref<Record<string, string>>({
 
 const INITIAL_WIDTH = 700;
 const INITIAL_HEIGHT = 120;
-const MAX_HEIGHT = 600;
 const WINDOW_MOVE_STEP = 40;
+const MIN_EXPANDED_HEIGHT = 200; // 展开时的最小高度
 
 let settingsStore: Store | null = null;
 
@@ -107,6 +107,45 @@ async function loadSettings() {
   }
 }
 
+/**
+ * 计算最后一轮对话的高度（用户消息 + 助手回复）
+ */
+function getLastRoundHeight(): number {
+  const chatContent = document.getElementById("chat-content");
+  if (!chatContent) return 0;
+
+  const messageGroups = chatContent.querySelectorAll(':scope > div > .flex');
+  if (messageGroups.length === 0) return 0;
+
+  // 找到最后一轮对话：最后一个用户消息 + 其后的助手回复
+  let lastUserIndex = -1;
+  for (let i = messageGroups.length - 1; i >= 0; i--) {
+    const el = messageGroups[i];
+    if (el.classList.contains('justify-end')) {
+      lastUserIndex = i;
+      break;
+    }
+  }
+
+  if (lastUserIndex === -1) {
+    // 没有用户消息，取最后两个元素
+    const startIdx = Math.max(0, messageGroups.length - 2);
+    let height = 0;
+    for (let i = startIdx; i < messageGroups.length; i++) {
+      height += (messageGroups[i] as HTMLElement).offsetHeight;
+    }
+    return height;
+  }
+
+  // 计算最后一轮对话高度：用户消息 + 后续所有助手回复
+  let roundHeight = 0;
+  for (let i = lastUserIndex; i < messageGroups.length; i++) {
+    roundHeight += (messageGroups[i] as HTMLElement).offsetHeight;
+  }
+
+  return roundHeight;
+}
+
 async function resizeWindow(expanded: boolean) {
   const appWindow = getCurrentWindow();
   const factor = await appWindow.scaleFactor();
@@ -120,8 +159,16 @@ async function resizeWindow(expanded: boolean) {
     const inputArea = document.getElementById("input-area");
 
     if (content && inputArea) {
+      // 计算最后一轮对话的高度作为最大高度限制
+      const lastRoundHeight = getLastRoundHeight();
+      const padding = 32; // chat-content 的 padding (p-4 = 16px * 2)
+      const gap = 16; // space-y-4 的间距
+      const maxHeight = lastRoundHeight + padding + gap + inputArea.offsetHeight + 4;
+
       const totalContentHeight = content.scrollHeight + inputArea.offsetHeight + 4;
-      const targetHeight = Math.min(Math.max(totalContentHeight, INITIAL_HEIGHT), MAX_HEIGHT);
+      // 使用最后一轮对话高度作为上限，但至少要有 MIN_EXPANDED_HEIGHT
+      const effectiveMaxHeight = Math.max(maxHeight, MIN_EXPANDED_HEIGHT);
+      const targetHeight = Math.min(Math.max(totalContentHeight, INITIAL_HEIGHT), effectiveMaxHeight);
 
       if (targetHeight > currentHeight) {
         // Expand: Resize window first (transparent area increases), then animate UI
@@ -184,7 +231,12 @@ watch(
   messages,
   async (newMessages) => {
     if (newMessages && newMessages.length > 0) {
-      await resizeWindow(true);
+      const lastMsg = newMessages[newMessages.length - 1];
+      // 只有当最后一条消息是 assistant 回复时，才重新计算窗口高度
+      // 用户消息发送后仅滚动到底部，不调整窗口大小
+      if (lastMsg.role === 'assistant') {
+        await resizeWindow(true);
+      }
       scrollToBottom();
     } else {
       if (isExpanded.value) {
