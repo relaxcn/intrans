@@ -2,13 +2,75 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, WindowEvent,
+    Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent,
 };
 use caret;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+fn inline_shell_safe_position(
+    app: &tauri::AppHandle,
+    desired: PhysicalPosition<i32>,
+    window_size: PhysicalSize<u32>,
+) -> PhysicalPosition<i32> {
+    const MARGIN: i32 = 12;
+    const GAP_BELOW: i32 = 12; // 光标下方的默认间距
+    const GAP_ABOVE_EXTRA: i32 = 30; // 上方额外间距，避免贴得过近
+
+    let monitors = app.available_monitors().ok();
+
+    let target_monitor = monitors
+        .as_ref()
+        .and_then(|list| {
+            list.iter().find(|m| {
+                let pos = m.position();
+                let size = m.size();
+                desired.x >= pos.x
+                    && desired.x <= pos.x + size.width as i32
+                    && desired.y >= pos.y
+                    && desired.y <= pos.y + size.height as i32
+            })
+        })
+        .cloned()
+        .or_else(|| monitors.and_then(|mut list| list.pop()))
+        .or_else(|| app.primary_monitor().ok().flatten());
+
+    if let Some(monitor) = target_monitor {
+        let monitor_pos = monitor.position();
+        let monitor_size = monitor.size();
+
+        let min_x = monitor_pos.x + MARGIN;
+        let min_y = monitor_pos.y + MARGIN;
+        let max_x = monitor_pos.x + monitor_size.width as i32 - window_size.width as i32 - MARGIN;
+        let max_y = monitor_pos.y + monitor_size.height as i32 - window_size.height as i32 - MARGIN;
+
+        // 水平尽量以光标为中心，对齐后再做边界夹紧
+        let center_x = desired.x - (window_size.width as i32 / 2);
+        let safe_x = if max_x < min_x {
+            min_x
+        } else {
+            center_x.clamp(min_x, max_x)
+        };
+
+        // 优先放在光标下方（留 GAP_BELOW），若不够空间则放上方（留窗口高度 + MARGIN + GAP_ABOVE_EXTRA）
+        let below_y = desired.y + GAP_BELOW;
+        let safe_y = if max_y < min_y {
+            min_y
+        } else if below_y <= max_y {
+            below_y.clamp(min_y, max_y)
+        } else {
+            let above_y = desired.y - window_size.height as i32 - MARGIN - GAP_ABOVE_EXTRA;
+            above_y.clamp(min_y, max_y)
+        };
+
+        PhysicalPosition::new(safe_x, safe_y)
+    } else {
+        // 无法获取显示器信息时，简单放在光标下方并避免负值
+        PhysicalPosition::new(desired.x.max(0), (desired.y + GAP_BELOW).max(0))
+    }
 }
 
 #[tauri::command]
@@ -22,12 +84,18 @@ fn toggle_main_window(app: tauri::AppHandle) {
         } else {
             // 先获取光标位置（在窗口成为前台之前）
             let caret_pos = caret::get_position();
+            let window_size = window
+                .outer_size()
+                .unwrap_or_else(|_| PhysicalSize::new(700, 400));
             
             let _ = window.unminimize();
 
             if let Some(pos) = caret_pos {
-                tracing::debug!(x = pos.x, y = pos.y, "设置窗口位置到光标处");
-                let _ = window.set_position(tauri::Position::Physical(pos.into()));
+                let desired = PhysicalPosition::new(pos.x, pos.y);
+                let safe_pos = inline_shell_safe_position(&app, desired, window_size);
+
+                tracing::debug!(x = safe_pos.x, y = safe_pos.y, "设置窗口位置到光标处并进行边界保护");
+                let _ = window.set_position(tauri::Position::Physical(safe_pos));
             } else {
                 tracing::warn!("所有光标获取方法都失败，将使用屏幕中央");
                 let _ = window
