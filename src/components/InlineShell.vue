@@ -438,6 +438,7 @@ async function handleKeydown(event: KeyboardEvent) {
     
     if (hasOptions && typeof lastMsg.selectedOptionIndex === 'number' && lastMsg.selectedOptionIndex >= 0) {
         await selectOption(session.messages.length - 1, lastMsg.selectedOptionIndex);
+        await handleSessionEnd();
         // 复制后关闭窗口
         const appWindow = getCurrentWindow();
         await appWindow.hide();
